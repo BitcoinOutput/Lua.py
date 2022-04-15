@@ -1,5 +1,6 @@
 import ast
 import lua_gen as lg
+import prettyast as ps
 from pprint import pprint
 
 #      Python AST
@@ -13,7 +14,7 @@ from pprint import pprint
 #           V
 #        Assembly?
 # I plan on soon to make a compiler for lua bytecode to assembly,
-# This can make lua&python much, MUCH faster, and paired with the current python to lua
+# This can make lua & python much, MUCH faster, and paired with the current python to lua
 # compiler, it can compile python to assembly!
 # so basically, lua bytecode -> native code, and:
 # compiled python -> lua -> lua bytecode -> native code!
@@ -37,11 +38,37 @@ pyfuncs = {
     'len': lg.lualen
 }
 
+
+def parse_args(x):
+    return [arg.arg for arg in x]
+
+
+def errast(self, node, msg):
+    print(f'[compiler {node.lineno}:{node.col_offset}]: {msg}')
+
+
 class Compiler:
     def __init__(self, pyast):
         self.pos = 0
         self.ast = pyast
         self.lfile = lg.LuaFile('out.lua')
+
+    def cmp(self, op, left, right):
+        if isinstance(op, ast.Eq):
+            return lg.eq(left, right)
+        self.errast(op, f"Unsupported operator {op}")
+
+    def extract(self, if_stmt, elseifs, else_):
+        for i in if_stmt.orelse:
+            if isinstance(i, ast.If):
+                test = self.isocompile([i.test])
+                elbody = self.isocompile(i.body)
+                elseifs.append([test, elbody])
+                if i.orelse != []:
+                    self.extract(i, elseifs, else_)
+            else:
+                else_.append(self.isocompile(if_stmt.orelse))
+                return
 
     def compile(self):
         end = ''
@@ -72,10 +99,55 @@ class Compiler:
             
             elif self.inst(ast.Call):
                 fn = self.peek()
-                name = fn.func.id
+                name = self.isocompile([fn.func])
                 args = [self.isocompile([x]) for x in fn.args]
-                end += f'{name}({", ".join(args)})'
-
+                if name == "__lua__":
+                    if not [(x[0] == '"' and x[0] == '"') or (x[0] == "'" and x[0] == "'")  for x in args] == [True]*len(args):
+                        self.errast(fn, '__lua__ requires string arguments')
+                    end += '\n'.join([x[1:-1] for x in args])
+                else:
+                    end += lg.call(name, args)
+                
+            elif self.inst(ast.Attribute):
+                attr = self.peek()
+                attr1 = self.isocompile([attr.value])
+                attr2 = attr.attr
+                end += f'{attr1}.{attr2}'
+            
+            elif self.inst(ast.Import):
+                import_ = self.peek()
+                name    = import_.names[0].name
+                asname  = name
+                try:
+                    asname = import_.names[0].asname
+                except: pass
+                end += lg.require(name, asname)
+            
+            elif self.inst(ast.Compare):
+                test  = self.peek()
+                left  = self.isocompile([test.left])
+                op    = test.ops[0]
+                print(op)
+                right = self.isocompile([test.comparators[0]])
+                
+                end += self.cmp(op, left, right)
+            
+            elif self.inst(ast.If):
+                If      = self.peek()
+                test    = self.isocompile([If.test])
+                body    = self.isocompile(If.body)
+                elseifs = []
+                else_   = []
+                self.extract(If, elseifs, else_)
+                end += lg.if_stmt([test, body], elseifs, else_)
+                        
+            
+            elif self.inst(ast.FunctionDef):
+                fn = self.peek()
+                name = fn.name
+                args = parse_args(fn.args.args)
+                body = self.isocompile(fn.body)
+                end += lg.function(name, args, body)
             self.advance()
         return end
     # ----------
@@ -101,6 +173,7 @@ class Compiler:
         self.lfile.append(item)
 
     def write(self):
+        self.lfile.strip_excess()
         self.lfile.write()
 
     def peek(self):
@@ -111,7 +184,8 @@ class Compiler:
 
 def gen_ast(x):
     tree = ast.parse(open(x).read())
-    pprint(ast.dump(tree))
+    for node in tree.body:
+        ps.pprint(node)
 
     return tree.body
     

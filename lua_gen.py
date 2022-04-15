@@ -1,3 +1,6 @@
+import re
+
+
 def tab(x): return '\n'.join(['\t'+i for i in x.split('\n')])
 
 
@@ -53,8 +56,10 @@ def convert_dicttable(dct):
 def while_stmt(cond, body):
     return f"while {cond} do\n{tab(''.join(body)).rstrip()}\nend\n"
 
+
 def require(name, asname=None):
     return vardef(name if asname == None else asname, call('require', [f'"{name}"']))
+
 
 def call(name, args):
     return f"{name}({_handlearg(args)})\n"
@@ -72,7 +77,7 @@ def class_def(name, methods):
 
 
 def method(cname, name, args, body):
-    return f"function {cname}:{name}({_handlearg(args)})\n{tab(''.join(body)).rstrip()}\nend\n"
+    return f"function {cname}.{name}({_handlearg(args)})\n{tab(''.join(body)).rstrip()}\nend\n"
 
 
 def selfcall(object, attachment, args):
@@ -187,4 +192,6 @@ class LuaFile:
     def write(self):
         with open(self.name, 'w') as f:
             f.write(self.program)
-   
+            
+    def strip_excess(self):
+        self.program = re.sub(r'(\n)+', '\n', self.program)
