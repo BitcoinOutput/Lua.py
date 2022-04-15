@@ -1,1 +1,1 @@
-# pylua
+# Pylua - python to lua compiler

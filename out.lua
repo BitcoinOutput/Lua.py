@@ -1,10 +1,8 @@
-if 1 == 2 then
-	print("Math's is broken")
-elseif 1 == 1 then
-	print("Math's is fine")
-elseif 1 == 3 then
-	print("Math's is fineq")
-else
-	print("W H")
-	print("A T")
+local one_is_one
+one_is_one = function()
+	return 1 == 1
+end
+while one_is_one()
+do
+    print("Hello!")
 end

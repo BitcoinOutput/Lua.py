@@ -34,10 +34,6 @@ from pprint import pprint
 
 variables = {}
 
-pyfuncs = {
-    'len': lg.lualen
-}
-
 
 def parse_args(x):
     return [arg.arg for arg in x]
@@ -88,6 +84,8 @@ class Compiler:
                 const = self.peek().value
                 if isinstance(const, str):
                     end += f'"{const}"'
+                elif isinstance(const, bool):
+                    end += str(const).lower()
                 else:
                     end += str(const)
 
@@ -108,6 +106,14 @@ class Compiler:
                 else:
                     end += lg.call(name, args)
                 
+            elif self.inst(ast.While):
+                while_stmt = self.peek()
+                test = self.isocompile([while_stmt.test])
+                body = self.isocompile(while_stmt.body)
+                end += lg.while_stmt(test, body)
+                
+            elif self.inst(ast.Return):
+                end += lg.return_stmt(self.isocompile([self.peek().value]))
             elif self.inst(ast.Attribute):
                 attr = self.peek()
                 attr1 = self.isocompile([attr.value])
