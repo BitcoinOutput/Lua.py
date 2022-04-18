@@ -3,9 +3,9 @@ Lua.py is an experimental python to lua compiler, it is not meant to be used in 
 Lua.py make's python code slightly faster, and you can use it in roblox. \*Not tested!\*
 
 ## Test:
-- [x] Love2Dx
+- [x] Love2D
 - [x] Turing complete - with brainf***
-- [?] Works on roblox
+- [ ] Works on roblox - untested
 
 ## Features
 - [x] Loops
