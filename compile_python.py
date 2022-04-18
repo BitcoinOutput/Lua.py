@@ -1,5 +1,5 @@
 import ast
-
+import os
 import gen_lua as lg
 
 #      Python AST
@@ -32,6 +32,9 @@ import gen_lua as lg
 # local a = 2
 
 variables = {}
+
+# macro_<NAME> <LUA BODY, NOT AST.>
+macros = {}
 
 boilerplate = """
 -- to concatenate strings with +
@@ -77,7 +80,7 @@ range = function(start, stop, step)
     end
     local index = {}
     for i = start, stop, step do 
-        table.insert(index, i)
+        table.insert(index, #index, i)
     end
     return index
 end
@@ -232,26 +235,34 @@ class Compiler:
                 
             
             elif self.inst(ast.Name):
-                end += self.peek().id
+                name = self.peek().id
+                if name == 'args':
+                    end += '...'
+                else:
+                    end += name
 
             elif self.inst(ast.Expr):
                 end += self.isocompile([self.peek().value])+'\n'
             
-            elif self.inst(ast.Call):
+            elif self.inst(ast.Call ):
                 fn = self.peek()
                 name = self.isocompile([fn.func])
                 args = [self.isocompile([x]) for x in fn.args]
-                if name == "__lua__":
-                    if not self.list_string_check(args):
-                        self.errast(fn, '__lua__ requires string arguments')
-                    end += '\n'.join([x[1:-1] for x in args])
+                if name in macros:
+                    # It is a macro
+                    end += macros[name]
                 else:
-                    name_ = name.split(".")
-                    if len(name_) == 1:
-                        end += lg.call(name, args).strip()
+                    if name == "__lua__":
+                        if not self.list_string_check(args):
+                            self.errast(fn, '__lua__ requires string arguments')
+                        end += '\n'.join([x[1:-1] for x in args])
                     else:
-                        last = name_.pop()
-                        end += lg.selfcall('.'.join(name_), last, args).strip()
+                        name_ = name.split(".")
+                        if len(name_) == 1:
+                            end += lg.call(name, args).strip()
+                        else:
+                            last = name_.pop()
+                            end += lg.selfcall('.'.join(name_), last, args).strip()
             
             elif self.inst(ast.While):
                 while_stmt = self.peek()
@@ -272,10 +283,16 @@ class Compiler:
                 import_ = self.peek()
                 name    = import_.names[0].name
                 asname  = name
-                try:
-                    asname = import_.names[0].asname
-                except: pass
-                end += lg.require(name, asname)
+                if name.startswith('lualib.'):
+                    fname = os.path.join(os.path.dirname(__file__), os.path.join('lib', name.split('.', 1)[1]+'.py'))
+                    prog = self.isocompile(gen_ast(fname))
+                    end += prog+'\n'
+                        
+                else:
+                    end += lg.require(name, asname)
+                    try:
+                        asname = import_.names[0].asname
+                    except: pass
             
             elif self.inst(ast.Compare):
                 test  = self.peek()
@@ -305,25 +322,37 @@ class Compiler:
                 name = fn.name
                 args = parse_args(fn.args.args)
                 body = self.isocompile(fn.body)
-                if fn.args.vararg:
-                    body = lg.vardef('args', '...') + body
-                    args.append('...')
-                if not self.klass:
-                    end += lg.function(name, args, body)
+                if name.startswith('macro_'):
+                    # It is a macro
+                    macros.update({name: body})
                 else:
-                    end += lg.method(self.klass, name, args, body)
+                    if fn.args.vararg:
+                        args.append('...')
+                    if not self.klass:
+                        end += lg.function(name, args, body)
+                    else:
+                        end += lg.method(self.klass, name, args, body)
                     
             elif self.inst(ast.ClassDef):
                 klass = self.peek()
                 name = klass.name
                 body = self.isocompile(klass.body, name)
                 end += lg.class_def(name, body)
+            
+            elif self.inst(ast.UnaryOp):
+                return self.unaryize(self.peek())
             self.advance()
         return end
     # ----------
     # | Utils  |
     # ----------
-
+    
+    def unaryize(self, x):
+        op = ''
+        if isinstance(x.op, ast.USub):
+            op = '-'
+        return f'{op}{self.isocompile([x.operand])}'
+    
     def string_check(self, item):
         return (item[0] == '"' and item[-1] == '"') or (item[0] == "'" and item[-1] == "'")
 
@@ -361,7 +390,6 @@ class Compiler:
 
 def gen_ast(x):
     tree = ast.parse(open(x).read())
-
     return tree.body
     
 

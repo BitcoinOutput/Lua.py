@@ -77,8 +77,9 @@ def class_def(name, methods):
 
 
 def method(cname, name, args, body):
-    if args[0] == 'self':
-        args = args[1:]
+    if len(args) > 0:
+        if args[0] == 'self':
+            args = args[1:]
     return f"function {cname}:{name}({_handlearg(args)})\n{tab(''.join(body)).rstrip()}\nend\n"
 
 
